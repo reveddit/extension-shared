@@ -1,0 +1,47 @@
+[
+  {
+    "name": "two stores, notes not shown, bare version lines",
+    "settings": {
+      "stores": ["chrome", "firefox"],
+      "showsReleaseNotes": false,
+      "notesGlobal": "__CHANGELOG__",
+      "versionLine": "version",
+      "checks": [{ "script": "preflight", "remember": false }],
+      "notBuildInputs": ["tests", "scripts", "src/*__tests__*", "*.md", ".github", ".gitignore", ".env.example", "LICENSE", "playwright.config.js", "vitest.config.ts", "shared.json", "shared.lock.json"]
+    },
+    "gitignore": "node_modules/\ndist-chrome/\ndist-firefox/\ndist-chrome-dev/\ndist-firefox-dev/\nchrome.zip\nfirefox.zip\nsource.zip\n.env\nweb-ext-artifacts/\n.publish-status.json\n.publish-log.jsonl\n"
+  },
+  {
+    "name": "two stores, a Privacy tab, dated or bare version lines",
+    "settings": {
+      "stores": ["chrome", "firefox"],
+      "showsReleaseNotes": false,
+      "notesGlobal": "__CHANGELOG__",
+      "versionLine": "either",
+      "privacyFile": "STORE_PRIVACY.txt",
+      "clearEnv": ["DIST_DIR"],
+      "notBuildInputs": ["tests", "scripts", "*.md", ".github", ".gitignore", ".env.example", "graphics", "STORE_PRIVACY.txt", "playwright.config.js", "vitest.config.ts", "shared.json", "shared.lock.json"]
+    },
+    "gitignore": "node_modules/\ndist-chrome/\ndist-firefox/\ndist-chrome-dev/\ndist-firefox-dev/\ndist-chrome-e2e/\nchrome.zip\nfirefox.zip\nsource.zip\n.env\nweb-ext-artifacts/\n.publish-status.json\n.publish-log.jsonl\n"
+  },
+  {
+    "name": "three stores, notes shown, dated version lines, two checks",
+    "settings": {
+      "stores": ["chrome", "edge", "firefox"],
+      "showsReleaseNotes": true,
+      "versionLine": "date - version",
+      "privacyFile": "STORE_PRIVACY.txt",
+      "checks": [
+        { "script": "preflight", "label": "Preflight" },
+        { "script": "test:signin:chrome", "label": "The real sign-in test", "skipFlag": "--skip-signin" }
+      ],
+      "clearEnv": ["STAGING", "SIMULATE_DEPRECATION"],
+      "sourceZip": "source-code-submission.zip",
+      "sourceZipExcludes": ["*.env*", "dist-*", ".claude", ".claude-mcp"],
+      "chromeDashboardUser": 1,
+      "storeCheck": "python3 ../site/scripts/store-versions.py --check",
+      "notBuildInputs": ["tests", "scripts", "*.md", "dist-*", ".claude", ".claude-mcp", ".github", ".husky", "graphics", "images", "test-results", "LICENSE", "renovate.json", "eslint.config.js", ".prettierrc", ".prettierignore", ".editorconfig", "playwright.config.js", "vitest.config.js", ".gitignore", ".gitattributes", "STORE_PRIVACY.txt", "shared.json", "shared.lock.json"]
+    },
+    "gitignore": ".DS_Store\n.env\nnode_modules/*\ndist/*\ndist-dev-*\ndist-staging-*\n*.zip\n.publish-status.json\n.publish-log.jsonl\nweb-ext-artifacts/\ntest-results/\n"
+  }
+]

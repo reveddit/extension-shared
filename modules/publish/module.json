@@ -1,0 +1,15 @@
+{
+  "about": "The store publish scripts: yarn publish:all, one script per store (Chrome, Edge, Firefox), the publish log and the Chrome token refresh, with their tests. Settings: shared.json's modules.publish (README.md here).",
+  "files": [
+    "scripts/lib/env.mjs",
+    "scripts/publishing/settings.mjs",
+    "scripts/publishing/common.mjs",
+    "scripts/publishing/publish-all.mjs",
+    "scripts/publishing/publish-chrome.mjs",
+    "scripts/publishing/publish-edge.mjs",
+    "scripts/publishing/publish-firefox.mjs",
+    "scripts/publishing/publish-log.mjs",
+    "scripts/publishing/refresh-chrome-token.mjs",
+    "scripts/publishing/__tests__/publish.test.mjs"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "about": "Every target gets this: the test that fails when a synced file is edited in the target instead of here.",
+  "files": [
+    "scripts/shared-files.test.mjs"
+  ]
+}

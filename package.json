@@ -1,0 +1,16 @@
+{
+  "name": "extension-shared",
+  "private": true,
+  "type": "module",
+  "description": "The one copy of the code the extensions share, synced into each repo",
+  "scripts": {
+    "test": "vitest run",
+    "sync": "node sync.mjs",
+    "check": "node sync.mjs --check",
+    "diff": "node sync.mjs --diff"
+  },
+  "devDependencies": {
+    "vitest": "4.1.6"
+  },
+  "packageManager": "yarn@4.14.1"
+}
