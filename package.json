@@ -1,6 +1,7 @@
 {
   "name": "extension-shared",
   "private": true,
+  "license": "GPL-3.0",
   "type": "module",
   "description": "The one copy of the code the extensions share, synced into each repo",
   "scripts": {

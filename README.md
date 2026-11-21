@@ -2,7 +2,7 @@
 
 The one copy of the code the browser extensions share. Each repo keeps a committed copy of the modules it takes (no npm package, no submodule), and `sync.mjs` writes those copies from here, so a fix lands once.
 
-Why copies: Mozilla's reviewers rebuild from a `git archive` of the extension's repo with `yarn install --immutable`, so a private dependency would break their install; a public package would tie the extensions together publicly; and the repos' 7-day age gate would hold each new version of a package back a week.
+Why copies: Mozilla's reviewers rebuild from a `git archive` of the extension's repo with `yarn install --immutable`, so the code a build or a publish runs has to be in that repo, and the repos' 7-day age gate would hold each new version of a package back a week.
 
 ## Layout
 
@@ -20,8 +20,6 @@ Modules so far:
 - `shared.json` names the modules the repo takes, with their settings: `{"modules": {"publish": {...}}}`. The synced code reads its settings from there, so the files themselves are the same in every repo and name no project. Names, URLs and anything else that differs go in the settings.
 - `shared.lock.json` is written by the sync: each synced file with its sha256. Don't edit it.
 - The synced files start with `// Synced from the shared source (see shared.json): change it there, not here.`
-
-Nothing in a repo names this source or the other repos. Keep it that way: a public repo must not link to the others.
 
 ## Changing shared code
 
