@@ -6,8 +6,8 @@
 
 // A report's types, as the form's choices send them
 export const TYPES = ['bug', 'feature', 'question', 'other']
-// The hourly caps a site's counter keeps: perSender for every counter, and the
-// counts for the whole site for a counter that can keep them at once everywhere
+// The hourly caps the site's counter keeps (report-counts.js): from one sender,
+// kept from everyone together, and filed as issues from everyone together
 export const CAPS = ['perSender', 'keptPerHour', 'filedPerHour']
 const MESSAGES = ['empty', 'sent']
 
@@ -46,9 +46,9 @@ const RULES = {
     typeNames: v => (someOf(v, TYPES, isText) ? '' : `typeNames must name some of the types: ${TYPES.join(', ')}`),
     messages: v => (someOf(v, MESSAGES, isText) ? '' : `messages must give some of these a text: ${MESSAGES.join(', ')}`),
     caps: v =>
-        someOf(v, CAPS, n => Number.isInteger(n) && n > 0) && 'perSender' in v
+        someOf(v, CAPS, n => Number.isInteger(n) && n > 0) && CAPS.every(k => k in v)
             ? ''
-            : 'caps must be { perSender, keptPerHour?, filedPerHour? }, each a whole number above 0',
+            : 'caps must be { perSender, keptPerHour, filedPerHour }, each a whole number above 0',
     accent: v => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? '' : 'accent must be a color like #1d9bf0'),
 }
 const REQUIRED = ['origin', 'product', 'userLabel', 'publicRepo', 'privateRepo', 'ids', 'caps']

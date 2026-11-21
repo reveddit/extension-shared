@@ -32,7 +32,7 @@ const fine = {
     publicRepo: 'Example/example',
     privateRepo: 'Example/reports',
     ids: 'post',
-    caps: { perSender: 5 },
+    caps: { perSender: 5, keptPerHour: 30, filedPerHour: 10 },
 }
 const problems = changes => settingsProblems({ ...fine, ...changes })
 
@@ -54,13 +54,17 @@ test('wrong settings are refused before anything runs', () => {
     assert.equal(problems({ typeNames: { bug: 'Bug report', idea: 'Idea' } }).length, 1)
     assert.equal(problems({ typeNames: { bug: '' } }).length, 1)
     assert.equal(problems({ messages: { thanks: 'Thanks!' } }).length, 1)
+    const caps = changes => problems({ caps: { ...fine.caps, ...changes } }).length
     assert.equal(problems({ caps: {} }).length, 1)
-    assert.equal(problems({ caps: { keptPerHour: 30 } }).length, 1)
-    assert.equal(problems({ caps: { perSender: 0 } }).length, 1)
-    assert.equal(problems({ caps: { perSender: 2.5 } }).length, 1)
-    assert.equal(problems({ caps: { perSender: 5, perDay: 9 } }).length, 1)
+    // the counter keeps all three
+    assert.equal(problems({ caps: { perSender: 5 } }).length, 1)
+    assert.equal(problems({ caps: { keptPerHour: 30, filedPerHour: 10 } }).length, 1)
+    assert.equal(caps({ perSender: 0 }), 1)
+    assert.equal(caps({ keptPerHour: 2.5 }), 1)
+    assert.equal(caps({ filedPerHour: '10' }), 1)
+    assert.equal(caps({ perDay: 9 }), 1)
     assert.equal(problems({ accent: 'orange' }).length, 1)
-    assert.deepEqual(problems({ typeNames: { bug: 'Bug report' }, messages: { sent: 'Sent!' }, caps: { perSender: 5, keptPerHour: 30, filedPerHour: 10 }, accent: '#D93A00' }), [])
+    assert.deepEqual(problems({ typeNames: { bug: 'Bug report' }, messages: { sent: 'Sent!' }, accent: '#D93A00' }), [])
     const { privateRepo, ...missing } = fine
     assert.ok(settingsProblems(missing).includes('privateRepo is missing'))
     assert.throws(() => checkedSettings({ ...fine, ids: 'post ids' }), /modules\.reports\) are wrong: ids must be/)

@@ -1,17 +1,21 @@
 {
-  "about": "A site's problem reports: the report page's script, the handler's core (/api/feedback) and its inbox, with their tests. Each site keeps its own entry and counter. Settings: shared.json's modules.reports (README.md here).",
+  "about": "A site's problem reports: the report page's script, and the site's Worker: the handler's core (/api/feedback), its inbox, and the Durable Object that counts reports for the whole site, with their tests. Each site keeps its page markup and its deploy config. Settings: shared.json's modules.reports (README.md here).",
   "files": [
     "src/lib/report.js",
     "src/lib/report-settings.js",
     "src/lib/feedback-form.js",
-    "src/lib/feedback-handler.js"
+    "src/lib/feedback-handler.js",
+    "src/lib/report-counts.js",
+    "src/lib/report-worker.js",
+    "worker/index.js"
   ],
   "tests": {
     "node": [
       "test/report.test.mjs",
       "test/report-settings.test.mjs",
       "test/feedback-handler.test.mjs",
-      "test/feedback-form.test.mjs"
+      "test/feedback-form.test.mjs",
+      "test/report-worker.test.mjs"
     ]
   }
 }

@@ -1,6 +1,6 @@
 [
   {
-    "name": "a sender cap only, item ids, and its own type names and messages",
+    "name": "small caps, item ids, and its own type names and messages",
     "settings": {
       "origin": "https://example.com",
       "product": "Example",
@@ -10,12 +10,12 @@
       "ids": "item",
       "typeNames": { "bug": "Bug report", "feature": "Feature request", "question": "Question", "other": "Feedback" },
       "messages": { "empty": "Please enter a message.", "sent": "Sent, thank you!" },
-      "caps": { "perSender": 5 },
+      "caps": { "perSender": 3, "keptPerHour": 7, "filedPerHour": 4 },
       "accent": "#d93a00"
     }
   },
   {
-    "name": "caps for the whole site too, post ids, and the default type names and messages",
+    "name": "the sites' caps, post ids, and the default type names and messages",
     "settings": {
       "origin": "https://reports.example.org",
       "product": "Sample App",
