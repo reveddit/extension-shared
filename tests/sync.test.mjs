@@ -44,7 +44,7 @@ function coreTest() {
 
 // The node:test form of it, run as a target tested with node --test runs it
 function nodeCoreTest() {
-    const r = spawnSync(process.execPath, ['--test', 'test/'], { cwd: target, encoding: 'utf8' })
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', 'test/*.test.mjs'], { cwd: target, encoding: 'utf8' })
     return { code: r.status, out: r.stdout + r.stderr }
 }
 

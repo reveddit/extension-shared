@@ -19,7 +19,7 @@ Modules so far:
 ## In each repo
 
 - `shared.json` names the modules the repo takes, with their settings: `{"modules": {"publish": {...}}}`. The synced code reads its settings from there, so the files themselves are the same in every repo and name no project. Names, URLs and anything else that differs go in the settings.
-- `"testRunner"` in `shared.json` says what the repo's tests run with: `"vitest"` (the default) or `"node"` (`node --test test/`). The repo gets core's test and each module's tests in that runner's form, and the sync refuses a module that has no tests for it.
+- `"testRunner"` in `shared.json` says what the repo's tests run with: `"vitest"` (the default) or `"node"` (`node --test test/*.test.mjs`; Node 22 reads a bare `test/` as a file name). The repo gets core's test and each module's tests in that runner's form, and the sync refuses a module that has no tests for it.
 - `shared.lock.json` is written by the sync: each synced file with its sha256. Don't edit it.
 - The synced files start with `// Synced from the shared source (see shared.json): change it there, not here.`
 
@@ -35,5 +35,5 @@ The sync won't overwrite or remove a repo's file it didn't write as it is now: o
 
 ## Adding a repo or a module
 
-- A repo: give it a `shared.json` and add it to `targets.json`. With vitest, its config must pick up `scripts/**/*.test.mjs` and the modules' test paths; with node's test runner (`"testRunner": "node"`), `node --test test/` runs them. Then run `node sync.mjs --force <repo>` once, since the first sync replaces any hand-made copies.
+- A repo: give it a `shared.json` and add it to `targets.json`. With vitest, its config must pick up `scripts/**/*.test.mjs` and the modules' test paths; with node's test runner (`"testRunner": "node"`), `node --test test/*.test.mjs` runs them. Then run `node sync.mjs --force <repo>` once, since the first sync replaces any hand-made copies.
 - A module: add `modules/<name>/` with `module.json` and `files/`. Code that differs between repos reads its settings from `shared.json`'s `modules.<name>`. Give it tests that run here and in each repo, listed under `tests` for the runners of the repos that take it.
