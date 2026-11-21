@@ -11,6 +11,7 @@ A site's problem reports: the form the extension's "Report a problem" opens, wha
 ## What each site keeps
 
 - **Its entry**, which imports `shared.json` and calls `reportsHandler(shared.modules.reports)`: on Pages, `functions/api/feedback.js` exports `onRequestPost` and `onRequestGet`; on a Worker, the router calls `post` and `inbox`.
+  - **On Pages, import `shared.json` without an import attribute** (`with { type: 'json' }`). Pages builds Functions with its own Wrangler 3, whose bundler (esbuild 0.17) stops at one and fails the deploy; the repo's own Wrangler 4 doesn't, so a local build passes. Node refuses JSON imported that way, so the site's test loads the entry after registering a load hook that adds `type: 'json'`. The synced files use no import attribute, and must not.
 - **Its counter**: `{ admit(sender) }`, answering `{ ok, why, file }` for one more report from `sender`, a salted hash of the address (an IPv6 sender's /64, and one shared value for a request with no address). `why` is `'sender'` or `'site'` when it's no; `file: false` keeps a report without filing it. A counter that throws or answers nothing turns the report away with a 503. A Pages site counts per sender in KV, read then write, so two reports at once can both pass. A Worker's Durable Object counts once for the whole site, so its caps hold everywhere at once.
 - **Its page**, `src/pages/feedback.astro`: the markup, with the ids in `PAGE_IDS` (`feedback-form.js`), the hint (`fb-from-extension`) and the details box (`fb-details`) starting `hidden`, and the settings on the form:
 
