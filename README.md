@@ -14,7 +14,7 @@ Why copies: Mozilla's reviewers rebuild from a `git archive` of the extension's 
 Modules so far:
 
 - `publish`: the store publish scripts (`yarn publish:all`, one script per store, the publish log, the Chrome token refresh) and their tests. Its settings are in [modules/publish/README.md](modules/publish/README.md).
-- `reports`: a site's problem reports: the report page's script, and the site's Worker (the handler for `/api/feedback`, its inbox, and the Durable Object that counts reports for the whole site), with their tests (node's test runner). Each site keeps its page markup and its deploy config. Its settings are in [modules/reports/README.md](modules/reports/README.md).
+- `reports`: a site's problem reports: the report page's script, and the site's Worker (the handler for `/api/feedback`, its inbox, the Durable Object that counts reports for the whole site, and the site's videos, sent in the parts a browser asks for so they can be skipped through), with their tests (node's test runner). Each site keeps its page markup and its deploy config. Its settings are in [modules/reports/README.md](modules/reports/README.md).
 
 ## In each repo
 

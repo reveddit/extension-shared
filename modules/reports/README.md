@@ -5,7 +5,8 @@ A site's problem reports: the form the extension's "Report a problem" opens, the
 - `report.js`: reads the details the extension's link carries after `#r=` (version, browser, status summary, diagnostic log), and hides the ids in them behind stand-ins.
 - `feedback-form.js`: the report page's script. With details, it shows them and lets the person hide ids or leave the details out; with none, it shows the page's hint about the extension's button. It sends a report privately, or opens a public GitHub issue with ids always hidden and the log on the clipboard.
 - `feedback-handler.js`: the handler's core and the inbox. A report must come from the site's own page (or a local preview), be at most 64 KB, and have a message. A filled-in hidden field is thanked and dropped. The site's counter decides whether to keep it and whether to file it. It's kept in KV as `fb_*` and filed as an issue by the private repository's `file-report.yml` workflow, with the person's words fenced and their username and email as inline code, so nothing turns into a mention or a link. The inbox lists, marks and deletes only `fb_*` keys. Its key comes once, as `?key=<FEEDBACK_KEY>`: that page sets a cookie holding a hash of the key (30 days, the inbox's path only, `SameSite=Strict`) and takes the key out of the address, and any action in that address is left undone. Both secrets are compared in constant time.
-- `report-worker.js`: the Worker's router. The deploy config sends only `/api/*` to the Worker, and Cloudflare serves every page as a static file. `/api/feedback` takes a report (POST) or shows the inbox (GET); anything else gets a 404.
+- `report-worker.js`: the Worker's router. The deploy config sends only `/api/*` and the videos (`/assets/*.mp4`) to the Worker, and Cloudflare serves every page as a static file. `/api/feedback` takes a report (POST) or shows the inbox (GET), a video goes to `video-ranges.js`, and anything else gets a 404.
+- `video-ranges.js`: the site's videos, sent in the parts a browser asks for. Cloudflare serves a static file whole and ignores a request for part of one (`Range`), and Chrome and Edge then can't skip through a video. The Worker reads the video from the site's static files (`ASSETS`) and sends only the bytes asked for (206), 416 for a range past the end, or the whole file for several ranges or an `If-Range` that no longer matches. It stops reading the file once it has the range.
 - `report-counts.js`: the hourly counting, `admitCounts`.
 - `worker/index.js`: the Worker's entry, and `Limits`, the Durable Object that counts the site's reports. Every report asks the same object, one at a time, so the caps hold everywhere at once. It keeps only the current hour's counts, as salted hashes of senders, and an alarm drops them within two hours. Node can't load this file, since it imports `cloudflare:workers`; the tests load `report-worker.js` and `report-counts.js`.
 - `report-settings.js`: the settings' checks and defaults, and `formSettings`, the part the page gets.
@@ -28,7 +29,7 @@ import { formSettings } from '../lib/report-settings.js'
 </script>
 ```
 
-- **Its deploy config**, `deploy/cloudflare.config.ts` for `cf deploy`: the Worker's name, the site's domain, the KV namespace's id. It points the entrypoint at `../worker/index.js`, sends `/api/*` to the Worker first (`runWorkerFirst`), serves the 404 page for a missing one, exports `Limits` as a Durable Object (SQLite storage), and binds `FEEDBACK` (KV), `LIMITS` (the Durable Object) and the two secrets. `deploy/package.json` declares `cf` and `wrangler`, whose node_modules the config's `cf/config` import resolves from.
+- **Its deploy config**, `deploy/cloudflare.config.ts` for `cf deploy`: the Worker's name, the site's domain, the KV namespace's id. It points the entrypoint at `../worker/index.js`, sends `/api/*` and `/assets/*.mp4` to the Worker first (`runWorkerFirst: ["/api/*", "/assets/*.mp4"]`), serves the 404 page for a missing one, exports `Limits` as a Durable Object (SQLite storage), and binds `ASSETS` (the site's static files, `bindings.assets()`), `FEEDBACK` (KV), `LIMITS` (the Durable Object) and the two secrets. `deploy/package.json` declares `cf` and `wrangler`, whose node_modules the config's `cf/config` import resolves from.
 
 Wrong settings fail the build (`formSettings`) and stop the Worker before it takes a report (`reportsHandler`).
 
@@ -51,6 +52,7 @@ In the site's `shared.json`, under `modules.reports`. An unknown setting is an e
 
 ## Environment (the Worker's bindings and secrets)
 
+- `ASSETS`: the site's static files, which the videos are read from.
 - `FEEDBACK`: a KV namespace, the reports (`fb_*`).
 - `LIMITS`: the `Limits` Durable Object.
 - `FEEDBACK_KEY` (secret): the inbox's key, and the salt for the senders' hashes. With none set there's no inbox.

@@ -173,6 +173,22 @@ for (const { name, settings } of CASES) {
             assert.equal(put.headers.get('Allow'), 'GET, POST')
             assert.equal((await worker.fetch(new Request(`${origin}/api/other`), env, ctx())).status, 404)
         })
+
+        test("a video is read from the site's files and sent in the part asked for; nothing else under /assets/ is the Worker's", async () => {
+            const asked = []
+            env.ASSETS = {
+                fetch: async request => {
+                    asked.push(new URL(request.url).pathname)
+                    return new Response(new Uint8Array(10), { headers: { 'Content-Type': 'video/mp4', 'Content-Length': '10' } })
+                },
+            }
+            const res = await worker.fetch(new Request(`${origin}/assets/intro.mp4`, { headers: { Range: 'bytes=2-5' } }), env, ctx())
+            assert.equal(res.status, 206)
+            assert.equal(res.headers.get('Content-Range'), 'bytes 2-5/10')
+            assert.equal((await res.arrayBuffer()).byteLength, 4)
+            assert.deepEqual(asked, ['/assets/intro.mp4'])
+            assert.equal((await worker.fetch(new Request(`${origin}/assets/poster.jpg`), env, ctx())).status, 404)
+        })
     })
 }
 
@@ -182,7 +198,8 @@ test('the deploy config gives the Worker what it needs', { skip: !fs.existsSync(
     const has = (pattern, what) => assert.match(config, pattern, `deploy/cloudflare.config.ts: ${what}`)
     has(/entrypoint:\s*["']\.\.\/worker\/index\.js["']/, 'the entrypoint is ../worker/index.js')
     has(new RegExp(`domains:\\s*\\[[^\\]]*["']${host}["']`), `the domain is the settings' origin, ${host.replace(/\\/g, '')}`)
-    has(/runWorkerFirst:\s*\[\s*["']\/api\/\*["']\s*\]/, 'only /api/* runs the Worker')
+    has(/runWorkerFirst:\s*\[\s*["']\/api\/\*["']\s*,\s*["']\/assets\/\*\.mp4["']\s*\]/, 'only /api/* and the videos (/assets/*.mp4) run the Worker')
+    has(/ASSETS:\s*bindings\.assets\(\)/, "ASSETS is the site's static files, which the videos are read from")
     has(/notFoundHandling:\s*["']404-page["']/, 'a missing page gets the 404 page')
     has(/Limits:\s*exports\.durableObject\(/, 'Limits is exported as a Durable Object')
     has(/FEEDBACK:\s*bindings\.kv\(/, 'FEEDBACK is a KV namespace')
