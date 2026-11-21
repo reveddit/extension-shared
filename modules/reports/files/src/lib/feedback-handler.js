@@ -8,7 +8,7 @@
 //
 //   const { post, inbox } = reportsHandler(shared.modules.reports)
 //   post(request, env, { waitUntil, counter })   // POST: a report from the form
-//   inbox(request, env)                          // GET ?key=<FEEDBACK_KEY>: the inbox
+//   inbox(request, env)                          // GET: the inbox (?key=<FEEDBACK_KEY> once)
 //
 // counter.admit(sender) says whether one more report from `sender` (a salted
 // hash of its address) fits the hour's caps: { ok, why, file }, where why is
@@ -67,7 +67,7 @@ const code = t => `\`${String(t).replace(/[`\n\r]/g, '')}\``
 const PAGE_HEADERS = {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    // the key is in this page's address: no link from it may pass that on
+    // the first page's address carries the key: no link from it may pass that on
     'Referrer-Policy': 'no-referrer',
     'X-Robots-Tag': 'noindex',
     'X-Frame-Options': 'DENY',
@@ -100,6 +100,31 @@ document.querySelectorAll('.time').forEach(function(el) {
     el.textContent = prettyAgo(iso);
 });
 </script>`
+
+const hexOf = buffer => [...new Uint8Array(buffer)].map(b => b.toString(16).padStart(2, '0')).join('')
+const digestOf = value => crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+
+// Whether two secrets are the same, in the same time wherever they differ
+async function sameSecret(a, b) {
+    const [x, y] = (await Promise.all([digestOf(a), digestOf(b)])).map(d => new Uint8Array(d))
+    let diff = 0
+    for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i]
+    return diff === 0
+}
+
+// The inbox's cookie. It holds a hash of the key, not the key, goes back only to
+// the inbox's address, and comes only from a page on this site (SameSite=Strict),
+// so another site's link can't mark or delete anything.
+const SESSION_COOKIE = 'inbox'
+const SESSION_SECONDS = 30 * 24 * 60 * 60
+const sessionOf = async key => hexOf(await digestOf(`inbox session|${key}`))
+const cookieIn = (request, name) => {
+    for (const part of (request.headers.get('Cookie') || '').split(';')) {
+        const [k, ...v] = part.trim().split('=')
+        if (k === name) return v.join('=')
+    }
+    return ''
+}
 
 /**
  * The handler for one site, from its settings (shared.json's modules.reports).
@@ -218,16 +243,30 @@ export function reportsHandler(settings) {
         return json({ ok: true })
     }
 
-    // --- the inbox: /api/feedback?key=<FEEDBACK_KEY> ---
+    // --- the inbox: /api/feedback ---
+    // The key comes once, in a bookmark's address (?key=<FEEDBACK_KEY>). The page it
+    // opens sets the cookie and takes the key out of the address, so it stays out of
+    // later addresses, links and request logs. Any action in that first address is
+    // left undone.
 
     async function inbox(request, env) {
         const url = new URL(request.url)
+        const denied = () => new Response('Unauthorized', { status: 401, headers: { 'Cache-Control': 'no-store' } })
+        if (!env.FEEDBACK_KEY) return denied()
+        const session = await sessionOf(env.FEEDBACK_KEY)
         const key = url.searchParams.get('key')
-        if (!env.FEEDBACK_KEY || !key || key !== env.FEEDBACK_KEY) return new Response('Unauthorized', { status: 401, headers: { 'Cache-Control': 'no-store' } })
+        if (key !== null) {
+            if (!(await sameSecret(key, env.FEEDBACK_KEY))) return denied()
+            const page = await inboxPage(env)
+            const headers = new Headers(page.headers)
+            headers.set('Set-Cookie', `${SESSION_COOKIE}=${session}; Path=${url.pathname}; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Strict`)
+            return new Response(page.body, { headers })
+        }
+        if (!(await sameSecret(cookieIn(request, SESSION_COOKIE), session))) return denied()
 
         const action = url.searchParams.get('action')
         const id = url.searchParams.get('id')
-        const back = () => new Response(null, { status: 302, headers: { Location: `${url.pathname}?key=${encodeURIComponent(key)}`, 'Referrer-Policy': 'no-referrer' } })
+        const back = () => new Response(null, { status: 302, headers: { Location: url.pathname, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' } })
         // only reports: never the counts or anything else in KV
         if (action === 'delete' && id?.startsWith('fb_')) {
             await env.FEEDBACK.delete(id)
@@ -250,7 +289,10 @@ export function reportsHandler(settings) {
             }
             return back()
         }
+        return inboxPage(env)
+    }
 
+    async function inboxPage(env) {
         const list = await env.FEEDBACK.list({ prefix: 'fb_' })
         const entries = (
             await Promise.all(
@@ -262,7 +304,6 @@ export function reportsHandler(settings) {
         ).filter(Boolean)
         entries.sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
         const unread = entries.filter(e => !e.read).length
-        const qk = encodeURIComponent(key)
         const title = `${esc(s.product)} reports`
         const html = `<!doctype html>
 <html><head>
@@ -288,7 +329,7 @@ h1 { font-size: 1.4rem; }
 <h1>${title}</h1>
 <div class="toolbar">
     <span class="count">${entries.length} total · ${unread} unread</span>
-    ${entries.some(e => e.read) ? `<a class="btn" href="?key=${qk}&action=clear-read" onclick="return confirm('Delete all read reports?')">Delete read</a>` : ''}
+    ${entries.some(e => e.read) ? `<a class="btn" href="?action=clear-read" onclick="return confirm('Delete all read reports?')">Delete read</a>` : ''}
 </div>
 ${entries
     .map(
@@ -298,14 +339,15 @@ ${entries
 ${e.details ? `<details class="det"><summary>${esc(s.product)} ${esc(e.details.v)} · ${esc(e.details.b)}</summary><pre>${esc(e.details.s)}\n\n${esc(e.details.l)}</pre></details>` : ''}
 <div class="actions">
     ${e.filed ? `<a class="btn" rel="noreferrer" href="https://github.com/${esc(s.privateRepo)}/issues?q=${encodeURIComponent(e.id)}">GitHub issue</a>` : ''}
-    <a class="btn" href="?key=${qk}&action=read&id=${encodeURIComponent(e.id)}">${e.read ? 'Mark unread' : 'Mark read'}</a>
-    <a class="btn" href="?key=${qk}&action=delete&id=${encodeURIComponent(e.id)}" onclick="return confirm('Delete this report?')">Delete</a>
+    <a class="btn" href="?action=read&id=${encodeURIComponent(e.id)}">${e.read ? 'Mark unread' : 'Mark read'}</a>
+    <a class="btn" href="?action=delete&id=${encodeURIComponent(e.id)}" onclick="return confirm('Delete this report?')">Delete</a>
 </div>
 </div>`,
     )
     .join('\n')}
 ${entries.length === 0 ? '<p style="color:#71767b">No reports yet.</p>' : ''}
 ${AGO_SCRIPT}
+<script>if (location.search) history.replaceState(null, '', location.pathname)</script>
 </body></html>`
         return new Response(html, { headers: PAGE_HEADERS })
     }

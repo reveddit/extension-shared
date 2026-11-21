@@ -106,7 +106,9 @@ for (const { name, settings } of CASES) {
             return res
         }
         const reports = () => [...env.FEEDBACK.data].filter(([k]) => k.startsWith('fb_')).map(([id, v]) => ({ id, ...JSON.parse(v) }))
-        const get = query => inbox(new Request(`${s.origin}/api/feedback${query}`), env)
+        const get = (query, cookie) => inbox(new Request(`${s.origin}/api/feedback${query}`, cookie ? { headers: { Cookie: cookie } } : {}), env)
+        // the cookie the inbox sets when the bookmark's key opens it
+        const signIn = async () => (await get('?key=inbox-key')).headers.get('Set-Cookie').split(';')[0]
 
         test('keeps a report from the form, then files it through the private repository’s workflow', async () => {
             const res = await send({ type: 'bug', message: 'Nothing shows since Tuesday\nmore', username: 'someone', email: 'me@example.com', details })
@@ -277,26 +279,47 @@ for (const { name, settings } of CASES) {
             assert.ok(inputs.title.length + inputs.body.length + inputs.labels.length < 65535)
         })
 
-        test('the inbox needs its key, and none at all when no key is set', async () => {
+        test('the inbox needs its key or its cookie, and opens for neither when no key is set', async () => {
             await send({ message: 'kept for the inbox' })
             for (const query of ['', '?key=', '?key=wrong', '?key=inbox-keyx', '?key=INBOX-KEY']) {
                 const res = await get(query)
                 assert.equal(res.status, 401, query)
                 assert.equal(res.headers.get('Cache-Control'), 'no-store')
+                assert.equal(res.headers.get('Set-Cookie'), null)
             }
+            const cookie = await signIn()
+            assert.equal((await get('', cookie)).status, 200)
+            for (const wrong of ['inbox=', 'inbox=0123', `${cookie}0`, 'other=x', `x${cookie}`]) assert.equal((await get('', wrong)).status, 401, wrong)
+            // the key's value itself isn't the cookie
+            assert.equal((await get('', 'inbox=inbox-key')).status, 401)
             delete env.FEEDBACK_KEY
             assert.equal((await get('?key=')).status, 401)
             assert.equal((await get('?key=undefined')).status, 401)
+            assert.equal((await get('', cookie)).status, 401)
             // an empty key is no key
             env.FEEDBACK_KEY = ''
             assert.equal((await get('?key=')).status, 401)
             assert.equal((await get('')).status, 401)
         })
 
+        test('the key opens the inbox once: a cookie that only the inbox gets, and an address without the key', async () => {
+            const page = await get('?key=inbox-key')
+            assert.equal(page.status, 200)
+            const set = page.headers.get('Set-Cookie')
+            assert.match(set, /^inbox=[0-9a-f]{64}; /)
+            for (const part of ['Path=/api/feedback', 'HttpOnly', 'Secure', 'SameSite=Strict', 'Max-Age=2592000']) assert.ok(set.includes(part), part)
+            assert.ok(!set.includes('inbox-key'))
+            assert.match(await page.text(), /history\.replaceState\(null, '', location\.pathname\)/)
+            // a new key ends the old cookie
+            const cookie = set.split(';')[0]
+            env.FEEDBACK_KEY = 'a-new-key'
+            assert.equal((await get('', cookie)).status, 401)
+        })
+
         test('the inbox lists the reports, not the counts, links each filed issue, and passes its key to no link', async () => {
             await send({ type: 'bug', message: 'Listed <b>here</b>', username: 'someone', details })
             env.FEEDBACK.data.set('rl_0123456789abcdef_1', '3') // a site's count, kept beside the reports
-            const page = await get('?key=inbox-key')
+            const page = await get('', await signIn())
             assert.equal(page.status, 200)
             assert.equal(page.headers.get('Referrer-Policy'), 'no-referrer')
             assert.equal(page.headers.get('Cache-Control'), 'no-store')
@@ -310,6 +333,8 @@ for (const { name, settings } of CASES) {
             assert.ok(html.includes(`${s.product} 0.0.6 · Chrome 142, macOS`))
             const [{ id }] = reports()
             assert.ok(html.includes(`rel="noreferrer" href="https://github.com/${s.privateRepo}/issues?q=${encodeURIComponent(id)}"`))
+            assert.ok(html.includes(`href="?action=read&id=${encodeURIComponent(id)}"`))
+            assert.ok(!html.includes('inbox-key'))
         })
 
         test('the inbox marks and deletes only reports, and goes back to itself', async () => {
@@ -317,22 +342,29 @@ for (const { name, settings } of CASES) {
             await send({ message: 'second' })
             env.FEEDBACK.data.set('rl_0123456789abcdef_1', '3')
             const [one, two] = reports()
-            const read = await get(`?key=inbox-key&action=read&id=${encodeURIComponent(one.id)}`)
+            const cookie = await signIn()
+            // an action in the bookmark's address is left undone
+            await get(`?key=inbox-key&action=delete&id=${encodeURIComponent(one.id)}`)
+            assert.equal(reports().length, 2)
+            // and one without the cookie
+            assert.equal((await get(`?action=delete&id=${encodeURIComponent(one.id)}`)).status, 401)
+            assert.equal(reports().length, 2)
+            const read = await get(`?action=read&id=${encodeURIComponent(one.id)}`, cookie)
             assert.equal(read.status, 302)
-            assert.equal(read.headers.get('Location'), '/api/feedback?key=inbox-key')
+            assert.equal(read.headers.get('Location'), '/api/feedback')
             assert.equal(read.headers.get('Referrer-Policy'), 'no-referrer')
             assert.equal(reports().find(r => r.id === one.id).read, true)
             // not a report: left alone
-            await get('?key=inbox-key&action=delete&id=rl_0123456789abcdef_1')
-            await get('?key=inbox-key&action=read&id=rl_0123456789abcdef_1')
+            await get('?action=delete&id=rl_0123456789abcdef_1', cookie)
+            await get('?action=read&id=rl_0123456789abcdef_1', cookie)
             assert.equal(env.FEEDBACK.data.get('rl_0123456789abcdef_1'), '3')
             // the read ones go, the unread one stays
-            await get('?key=inbox-key&action=clear-read')
+            await get('?action=clear-read', cookie)
             assert.deepEqual(reports().map(r => r.id), [two.id])
-            await get(`?key=inbox-key&action=delete&id=${encodeURIComponent(two.id)}`)
+            await get(`?action=delete&id=${encodeURIComponent(two.id)}`, cookie)
             assert.equal(reports().length, 0)
             assert.equal(env.FEEDBACK.data.size, 1)
-            assert.match(await (await get('?key=inbox-key')).text(), /No reports yet/)
+            assert.match(await (await get('', cookie)).text(), /No reports yet/)
         })
     })
 }
