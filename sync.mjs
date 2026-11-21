@@ -9,10 +9,13 @@
 //
 // Targets default to the ones targets.json lists (paths from this folder). A
 // target's shared.json names the modules it takes, with their settings, as
-// {"modules": {"publish": {...}}}. Every target also gets core, the test that
-// fails when a synced file is edited there. Each module is a folder in modules/:
-// module.json lists its files, kept under files/ at the paths they get in a
-// target. The sync never commits: review the change and commit it in each target.
+// {"modules": {"publish": {...}}}, and the test runner its tests use, as
+// "testRunner": "vitest" (the default) or "node" (node --test). Every target
+// also gets core, the test that fails when a synced file is edited there, in its
+// runner's form. Each module is a folder in modules/: module.json lists its
+// files, kept under files/ at the paths they get in a target, and its tests for
+// each runner it supports. The sync never commits: review the change and commit
+// it in each target.
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
@@ -25,6 +28,9 @@ const LOCK = 'shared.lock.json'
 const LOCK_ABOUT =
     "Written by the sync from the shared source: each file it syncs into this repo, with its sha256. Change those files in the shared source, not here; a test fails when one is edited here."
 const SKIPPED_NAMES = new Set(['.DS_Store'])
+// What a target's tests run with: vitest, or node's own test runner (node --test)
+const RUNNERS = ['vitest', 'node']
+const CONFIG_KEYS = ['modules', 'testRunner']
 
 class SyncError extends Error {}
 
@@ -44,23 +50,42 @@ function walk(dir, prefix = '') {
     return out
 }
 
-// A module's files, from its module.json, which must list every file under files/
-function loadModule(name) {
+// A module's files for a target whose tests run with `runner`, from its
+// module.json: `files`, which every target gets, and `tests`, its test files for
+// each runner it supports ({"vitest": [...], "node": [...]}), of which a target
+// gets its runner's. module.json must list every file under files/.
+function loadModule(name, runner) {
     const dir = path.join(HERE, 'modules', name)
     if (!/^[a-z0-9-]+$/.test(name) || !fs.existsSync(path.join(dir, 'module.json'))) {
         throw new SyncError(`There's no module "${name}" in ${path.join(HERE, 'modules')}.`)
     }
-    const files = readJson(path.join(dir, 'module.json')).files || []
-    for (const file of files) {
-        if (file !== path.posix.normalize(file) || file.startsWith('../') || path.isAbsolute(file)) {
+    const spec = readJson(path.join(dir, 'module.json'))
+    const files = spec.files || []
+    const tests = spec.tests
+    if (
+        tests !== undefined &&
+        (!tests || typeof tests !== 'object' || Array.isArray(tests) || Object.entries(tests).some(([r, list]) => !RUNNERS.includes(r) || !Array.isArray(list)))
+    ) {
+        throw new SyncError(`Module ${name}'s tests must map test runners (${RUNNERS.join(', ')}) to lists of files.`)
+    }
+    // A module tested with one runner would have its tests skip silently in a repo that uses the other
+    if (tests && !(runner in tests)) {
+        throw new SyncError(`Module ${name} has tests for ${Object.keys(tests).join(' and ') || 'no runner'} only, and this repo tests with ${runner} (${CONFIG}'s testRunner).`)
+    }
+    const listed = [...files, ...Object.values(tests || {}).flat()]
+    for (const file of listed) {
+        if (typeof file !== 'string' || file !== path.posix.normalize(file) || file.startsWith('../') || path.isAbsolute(file)) {
             throw new SyncError(`Module ${name} lists "${file}", which isn't a plain path inside a repo.`)
         }
         if ([CONFIG, LOCK].includes(file)) throw new SyncError(`Module ${name} can't sync ${file}: each repo keeps its own.`)
         if (!fs.existsSync(path.join(dir, 'files', file))) throw new SyncError(`Module ${name} lists ${file}, which isn't in its files folder.`)
     }
-    const unlisted = walk(path.join(dir, 'files')).filter(file => !files.includes(file))
+    const unlisted = walk(path.join(dir, 'files')).filter(file => !listed.includes(file))
     if (unlisted.length) throw new SyncError(`Module ${name}'s files folder has files module.json doesn't list: ${unlisted.join(', ')}.`)
-    return files.map(file => {
+    const synced = [...files, ...(tests ? tests[runner] : [])]
+    const twice = synced.find((file, i) => synced.indexOf(file) !== i)
+    if (twice) throw new SyncError(`Module ${name} lists ${twice} twice.`)
+    return synced.map(file => {
         const from = path.join(dir, 'files', file)
         const bytes = fs.readFileSync(from)
         return { module: name, file, bytes, hash: sha256(bytes), mode: fs.statSync(from).mode & 0o777 }
@@ -70,13 +95,18 @@ function loadModule(name) {
 // What a sync of `target` would change, without changing anything
 function planTarget(target) {
     if (!fs.existsSync(path.join(target, CONFIG))) throw new SyncError(`${target} has no ${CONFIG}, which names the modules it takes.`)
-    const modules = readJson(path.join(target, CONFIG)).modules || {}
+    const config = readJson(path.join(target, CONFIG))
+    const unknown = Object.keys(config).filter(key => !CONFIG_KEYS.includes(key))
+    if (unknown.length) throw new SyncError(`${target}'s ${CONFIG} has ${unknown.join(', ')}, which the sync doesn't know: it takes ${CONFIG_KEYS.join(' and ')}.`)
+    const runner = config.testRunner ?? 'vitest'
+    if (!RUNNERS.includes(runner)) throw new SyncError(`${target}'s ${CONFIG} names testRunner "${runner}": it's ${RUNNERS.join(' (the default) or ')}.`)
+    const modules = config.modules || {}
     if ('core' in modules) throw new SyncError(`${target}'s ${CONFIG} names core, which every repo gets: leave it out.`)
     const names = ['core', ...Object.keys(modules)]
 
     const wanted = new Map()
     for (const name of names) {
-        for (const entry of loadModule(name)) {
+        for (const entry of loadModule(name, runner)) {
             if (wanted.has(entry.file)) throw new SyncError(`${entry.file} is in both ${wanted.get(entry.file).module} and ${name}.`)
             wanted.set(entry.file, entry)
         }

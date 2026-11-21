@@ -1,6 +1,8 @@
 {
-  "about": "Every target gets this: the test that fails when a synced file is edited in the target instead of here.",
-  "files": [
-    "scripts/shared-files.test.mjs"
-  ]
+  "about": "Every target gets this: the test that fails when a synced file is edited in the target instead of here, in the form its test runner takes (shared.json's testRunner).",
+  "files": [],
+  "tests": {
+    "vitest": ["scripts/shared-files.test.mjs"],
+    "node": ["test/shared-files.test.mjs"]
+  }
 }

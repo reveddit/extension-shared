@@ -9,7 +9,9 @@
     "scripts/publishing/publish-edge.mjs",
     "scripts/publishing/publish-firefox.mjs",
     "scripts/publishing/publish-log.mjs",
-    "scripts/publishing/refresh-chrome-token.mjs",
-    "scripts/publishing/__tests__/publish.test.mjs"
-  ]
+    "scripts/publishing/refresh-chrome-token.mjs"
+  ],
+  "tests": {
+    "vitest": ["scripts/publishing/__tests__/publish.test.mjs"]
+  }
 }

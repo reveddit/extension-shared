@@ -22,7 +22,8 @@ const inTarget = file => path.join(target, file)
 const read = file => fs.readFileSync(inTarget(file), 'utf8')
 const lock = () => JSON.parse(read('shared.lock.json'))
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex')
-const setModules = modules => write(inTarget('shared.json'), JSON.stringify({ modules }, null, 2) + '\n')
+const setConfig = config => write(inTarget('shared.json'), JSON.stringify(config, null, 2) + '\n')
+const setModules = modules => setConfig({ modules })
 const demoFile = (file, text) => write(path.join(source, 'modules', 'demo', 'files', file), text)
 const demoFiles = files => write(path.join(source, 'modules', 'demo', 'module.json'), JSON.stringify({ files }))
 
@@ -38,6 +39,12 @@ function coreTest() {
         encoding: 'utf8',
         env: { ...process.env, CI: '1', FORCE_COLOR: '0' },
     })
+    return { code: r.status, out: r.stdout + r.stderr }
+}
+
+// The node:test form of it, run as a target tested with node --test runs it
+function nodeCoreTest() {
+    const r = spawnSync(process.execPath, ['--test', 'test/'], { cwd: target, encoding: 'utf8' })
     return { code: r.status, out: r.stdout + r.stderr }
 }
 
@@ -211,6 +218,97 @@ describe('sync.mjs', () => {
 
     it('stops on an option it doesn\'t know', SLOW, () => {
         expect(sync('--chek').code).toBe(2)
+        expect(fs.existsSync(inTarget('shared.lock.json'))).toBe(false)
+    })
+})
+
+describe('sync.mjs for a target tested with node --test', () => {
+    const NODE_CORE = 'test/shared-files.test.mjs'
+    const VITEST_CORE = 'scripts/shared-files.test.mjs'
+
+    it("gives it core's node:test form, which fails when a synced file is edited, deleted, or shared.json changes", SLOW, () => {
+        setConfig({ testRunner: 'node', modules: { demo: {} } })
+        expect(sync().code).toBe(0)
+        expect(read(NODE_CORE)).toBe(fs.readFileSync(path.join(REAL, 'modules', 'core', 'files', NODE_CORE), 'utf8'))
+        expect(fs.existsSync(inTarget(VITEST_CORE))).toBe(false)
+        expect(Object.keys(lock().modules.core)).toEqual([NODE_CORE])
+        expect(sync('--check').code).toBe(0)
+        const clean = nodeCoreTest()
+        expect(clean.code, clean.out).toBe(0)
+        expect(clean.out).toMatch(/# pass 2\b/)
+
+        write(inTarget('scripts/demo/one.mjs'), 'export const one = 2 // a fix made here\n')
+        const edited = nodeCoreTest()
+        expect(edited.code).toBe(1)
+        expect(edited.out).toContain('These shared files were changed here: scripts/demo/one.mjs.')
+        expect(edited.out).toContain('Make the change in the shared source and sync it instead')
+        expect(sync('--force').code).toBe(0)
+
+        fs.rmSync(inTarget('scripts/demo/two.mjs'))
+        expect(nodeCoreTest().out).toContain('scripts/demo/two.mjs (missing)')
+        expect(sync().code).toBe(0)
+
+        fs.cpSync(path.join(source, 'modules', 'demo'), path.join(source, 'modules', 'other'), { recursive: true })
+        setConfig({ testRunner: 'node', modules: { demo: {}, other: {} } })
+        const added = nodeCoreTest()
+        expect(added.code).toBe(1)
+        expect(added.out).toContain('shared.json changed since the last sync')
+    })
+
+    it("moves core's test when a target changes runner", SLOW, () => {
+        expect(sync().code).toBe(0)
+        expect(fs.existsSync(inTarget(VITEST_CORE))).toBe(true)
+        setConfig({ testRunner: 'node', modules: { demo: {} } })
+        const check = sync('--check')
+        expect(check.code).toBe(1)
+        expect(check.out).toContain(`add      ${NODE_CORE}`)
+        expect(check.out).toContain(`remove   ${VITEST_CORE}`)
+        expect(sync().code).toBe(0)
+        expect(fs.existsSync(inTarget(VITEST_CORE))).toBe(false)
+        expect(read('scripts/demo/one.mjs')).toBe('export const one = 1\n')
+        expect(nodeCoreTest().code).toBe(0)
+
+        setConfig({ testRunner: 'vitest', modules: { demo: {} } })
+        expect(sync().code).toBe(0)
+        expect(fs.existsSync(inTarget(NODE_CORE))).toBe(false)
+        expect(fs.existsSync(inTarget('test'))).toBe(false)
+        expect(coreTest().code).toBe(0)
+    })
+
+    it("syncs a module's tests for the target's runner, and refuses a module with none for it", SLOW, () => {
+        demoFile('scripts/demo/one.test.mjs', '// vitest\n')
+        demoFile('test/demo.test.mjs', '// node:test\n')
+        write(
+            path.join(source, 'modules', 'demo', 'module.json'),
+            JSON.stringify({ files: ['scripts/demo/one.mjs', 'scripts/demo/two.mjs'], tests: { vitest: ['scripts/demo/one.test.mjs'], node: ['test/demo.test.mjs'] } }),
+        )
+        setConfig({ testRunner: 'node', modules: { demo: {} } })
+        expect(sync().code).toBe(0)
+        expect(Object.keys(lock().modules.demo)).toEqual(['scripts/demo/one.mjs', 'scripts/demo/two.mjs', 'test/demo.test.mjs'])
+        expect(fs.existsSync(inTarget('scripts/demo/one.test.mjs'))).toBe(false)
+
+        write(path.join(source, 'modules', 'demo', 'module.json'), JSON.stringify({ files: ['scripts/demo/one.mjs', 'scripts/demo/two.mjs'], tests: { vitest: ['scripts/demo/one.test.mjs'] } }))
+        fs.rmSync(path.join(source, 'modules', 'demo', 'files', 'test'), { recursive: true })
+        const refused = sync('--check')
+        expect(refused.code).toBe(1)
+        expect(refused.out).toContain("Module demo has tests for vitest only, and this repo tests with node (shared.json's testRunner).")
+
+        setConfig({ modules: { demo: {} } })
+        expect(sync().code).toBe(0)
+        expect(read('scripts/demo/one.test.mjs')).toBe('// vitest\n')
+    })
+
+    it('refuses a test runner it doesn\'t know, a setting it doesn\'t know, and tests that aren\'t lists', SLOW, () => {
+        setConfig({ testRunner: 'jest', modules: { demo: {} } })
+        expect(sync().out).toContain('names testRunner "jest": it\'s vitest (the default) or node')
+        setConfig({ testrunner: 'node', modules: { demo: {} } })
+        expect(sync().out).toContain("has testrunner, which the sync doesn't know: it takes modules and testRunner")
+        setConfig({ modules: { demo: {} } })
+        write(path.join(source, 'modules', 'demo', 'module.json'), JSON.stringify({ files: ['scripts/demo/one.mjs', 'scripts/demo/two.mjs'], tests: ['scripts/demo/one.mjs'] }))
+        expect(sync().out).toContain("Module demo's tests must map test runners (vitest, node) to lists of files.")
+        write(path.join(source, 'modules', 'demo', 'module.json'), JSON.stringify({ files: ['scripts/demo/one.mjs', 'scripts/demo/two.mjs'], tests: { vitest: ['scripts/demo/two.mjs'] } }))
+        expect(sync().out).toContain('Module demo lists scripts/demo/two.mjs twice.')
+        expect(sync().code).toBe(1)
         expect(fs.existsSync(inTarget('shared.lock.json'))).toBe(false)
     })
 })

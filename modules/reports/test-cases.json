@@ -1,0 +1,30 @@
+[
+  {
+    "name": "a sender cap only, item ids, and its own type names and messages",
+    "settings": {
+      "origin": "https://example.com",
+      "product": "Example",
+      "userLabel": "forum user",
+      "publicRepo": "Example/example",
+      "privateRepo": "Example/reports",
+      "ids": "item",
+      "typeNames": { "bug": "Bug report", "feature": "Feature request", "question": "Question", "other": "Feedback" },
+      "messages": { "empty": "Please enter a message.", "sent": "Sent, thank you!" },
+      "caps": { "perSender": 5 },
+      "accent": "#d93a00"
+    }
+  },
+  {
+    "name": "caps for the whole site too, post ids, and the default type names and messages",
+    "settings": {
+      "origin": "https://reports.example.org",
+      "product": "Sample App",
+      "userLabel": "site user",
+      "publicRepo": "Sample/sample-app",
+      "privateRepo": "Sample/reports",
+      "ids": "post",
+      "caps": { "perSender": 5, "keptPerHour": 30, "filedPerHour": 10 },
+      "accent": "#1d9bf0"
+    }
+  }
+]

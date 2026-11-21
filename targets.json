@@ -1,4 +1,4 @@
 {
   "about": "The repos this source syncs into, as paths from this folder. Each has a shared.json naming the modules it takes.",
-  "targets": ["../ghostedwatch", "../twisitter", "../real-time-extension"]
+  "targets": ["../ghostedwatch", "../twisitter", "../real-time-extension", "../ghostedwatch-site", "../twisitter-site"]
 }
